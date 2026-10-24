@@ -175,6 +175,21 @@
 #define HASH_FUNC_INTERNETCLOSEHANDLE                0xc0d1320f
 #define HASH_FUNC_INTERNETREADFILE                   0xe64c229
 
+// winhttp
+#define HASH_FUNC_WINHTTPOPEN                        0x3d31aa04
+#define HASH_FUNC_WINHTTPCONNECT                     0xbb60313c
+#define HASH_FUNC_WINHTTPOPENREQUEST                 0xffbc892d
+#define HASH_FUNC_WINHTTPADDREQUESTHEADERS           0xb8ee0200
+#define HASH_FUNC_WINHTTPSENDREQUEST                 0xc688ca05
+#define HASH_FUNC_WINHTTPWRITEDATA                   0x7fcbd1d7
+#define HASH_FUNC_WINHTTPRECEIVERESPONSE             0x909ba404
+#define HASH_FUNC_WINHTTPQUERYHEADERS                0x0548a6e4
+#define HASH_FUNC_WINHTTPQUERYDATAAVAILABLE          0xf8479123
+#define HASH_FUNC_WINHTTPREADDATA                    0xde72d8a8
+#define HASH_FUNC_WINHTTPCLOSEHANDLE                 0xf6845834
+#define HASH_FUNC_WINHTTPSETOPTION                   0xf2690497
+#define HASH_FUNC_WINHTTPSETTIMEOUTS                 0xa291b438
+
 // ws2_32
 #define HASH_FUNC_WSASTARTUP                         0x512662e2
 #define HASH_FUNC_WSACLEANUP                         0x6f1847d7

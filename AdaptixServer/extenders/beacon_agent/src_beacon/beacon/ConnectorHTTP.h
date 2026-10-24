@@ -1,7 +1,7 @@
 #pragma once
 
 #include <windows.h>
-#include <wininet.h>
+#include <winhttp.h>
 #include "Connector.h"
 
 #ifndef PROFILE_STRUCT
@@ -55,16 +55,19 @@ struct HTTPFUNC {
 	DECL_API(GetProcAddress);
 	DECL_API(GetLastError);
 
-	DECL_API(InternetOpenA);
-	DECL_API(InternetConnectA);
-	DECL_API(HttpOpenRequestA);
-	DECL_API(HttpSendRequestA);
-	DECL_API(InternetSetOptionA);
-	DECL_API(InternetQueryOptionA);
-	DECL_API(HttpQueryInfoA);
-	DECL_API(InternetQueryDataAvailable);
-	DECL_API(InternetCloseHandle);
-	DECL_API(InternetReadFile);
+	DECL_API(WinHttpOpen);
+	DECL_API(WinHttpConnect);
+	DECL_API(WinHttpOpenRequest);
+	DECL_API(WinHttpAddRequestHeaders);
+	DECL_API(WinHttpSendRequest);
+	DECL_API(WinHttpWriteData);
+	DECL_API(WinHttpReceiveResponse);
+	DECL_API(WinHttpQueryHeaders);
+	DECL_API(WinHttpQueryDataAvailable);
+	DECL_API(WinHttpReadData);
+	DECL_API(WinHttpCloseHandle);
+	DECL_API(WinHttpSetOption);
+	DECL_API(WinHttpSetTimeouts);
 };
 
 class ConnectorHTTP : public Connector
