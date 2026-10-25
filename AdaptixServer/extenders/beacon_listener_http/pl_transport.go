@@ -171,11 +171,17 @@ func (t *TransportHTTP) Start(ts Teamserver) error {
 		c.Next()
 	})
 
-	if t.Config.HttpMethod == "POST" {
-		router.POST("/*endpoint", t.processRequest)
-	} else if t.Config.HttpMethod == "GET" {
-		router.GET("/*endpoint", t.processRequest)
-	}
+	// Register BOTH verbs so beacons can use GET for empty check-ins
+	// (no request body) and POST when they have output to upload. The
+	// beacon's connector picks the verb per request based on whether it
+	// has a body; the configured http_method is kept as the default used
+	// for check-ins (and is still what validConfig insists be present),
+	// but the server does not refuse the other verb. Without the second
+	// registration, a POST-with-body hits router.NoRoute -> pageError
+	// (404) and the beacon's output is silently discarded.
+	router.GET("/*endpoint", t.processRequest)
+	router.POST("/*endpoint", t.processRequest)
+	_ = t.Config.HttpMethod
 
 	t.Active = true
 
