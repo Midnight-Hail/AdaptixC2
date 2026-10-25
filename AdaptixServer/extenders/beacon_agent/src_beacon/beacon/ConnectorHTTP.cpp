@@ -450,15 +450,16 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 							if (haveCL && answerSize > 0) {
 								ULONG numberReadedBytes = 0;
 								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, answerSize);
+								// Ask WinHttpReadData for the remaining Content-Length bytes each
+								// iteration. The previous code gated the read on WinHttpQueryDataAvailable:
+								// for a small response that raced the socket buffer, the pre-call
+								// returned 0, the loop broke, and recvSize stayed 0 forever. The
+								// server dutifully returns 47-59 byte task deliveries that the
+								// beacon then never sees, so no command runs and no output is uploaded.
+								// WinHttpReadData blocks for data to arrive; Content-Length is
+								// authoritative.
 								while (numberReadedBytes < answerSize) {
-									DWORD avail = 0;
-									if (!this->functions->WinHttpQueryDataAvailable(hRequest, &avail) || avail == 0) {
-										break;
-									}
-									DWORD toRead = avail;
-									if (numberReadedBytes + toRead > answerSize) {
-										toRead = answerSize - numberReadedBytes;
-									}
+									DWORD toRead = answerSize - numberReadedBytes;
 									DWORD readedBytes = 0;
 									if (!this->functions->WinHttpReadData(hRequest, buffer + numberReadedBytes, toRead, &readedBytes) || readedBytes == 0) {
 										break;
