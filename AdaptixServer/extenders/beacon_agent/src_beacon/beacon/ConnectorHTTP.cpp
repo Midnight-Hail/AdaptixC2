@@ -287,7 +287,8 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 				CHAR* currentUri = this->uris[this->uri_index];
 				ULONG uriLen = 0, methodLen = 0;
 				WCHAR* uriW    = AsciiToWide(this->functions, currentUri, &uriLen);
-				WCHAR* methodW = AsciiToWide(this->functions, this->http_method, &methodLen);
+				CHAR*  effectiveMethod = (data && data_size > 0) ? (CHAR*)"POST" : this->http_method;
+				WCHAR* methodW = AsciiToWide(this->functions, effectiveMethod, &methodLen);
 
 				HINTERNET hRequest = this->functions->WinHttpOpenRequest(
 					this->hConnect,
