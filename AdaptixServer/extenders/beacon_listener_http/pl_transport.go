@@ -363,6 +363,7 @@ func (t *TransportHTTP) processRequest(ctx *gin.Context) {
 
 	agentType, agentId, beat, bodyData, err = t.parseBeatAndData(ctx)
 	if err != nil {
+		fmt.Printf("[bl-http] parse-err method=%s uri=%s src=%s err=%v\n", ctx.Request.Method, ctx.Request.URL.Path, ExternalIP, err)
 		goto ERR
 	}
 
@@ -378,6 +379,15 @@ func (t *TransportHTTP) processRequest(ctx *gin.Context) {
 	_ = Ts.TsAgentProcessData(agentId, bodyData)
 
 	responseData, err = Ts.TsAgentGetHostedAll(agentId, 0x1900000) // 25 Mb
+
+	// Diagnostic trace, opt-in via BL_HTTP_DEBUG=1 in the server environment.
+	// Off by default so a production listener does not spam stdout with per-
+	// request lines carrying agent_id in cleartext; blue team telemetry
+	// belongs on the proxy, not on the actor-impersonating C2 server.
+	if os.Getenv("BL_HTTP_DEBUG") == "1" {
+		fmt.Printf("[bl-http] agent=%s method=%s uri=%s bodylen=%d resplen=%d\n",
+			agentId, ctx.Request.Method, ctx.Request.URL.Path, len(bodyData), len(responseData))
+	}
 	if err != nil {
 		goto ERR
 	} else {
