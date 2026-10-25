@@ -32,3 +32,7 @@ AdaptixClient/Libs/kddockwidgets/*_export.h
 # macOS
 .DS_Store
 **/.DS_Store
+# IDE / local build artefacts (Oct 2026 housekeeping)
+AdaptixClient/cmake-build-release/
+AdaptixClient/cmake-build-debug/
+AdaptixServer/dist/

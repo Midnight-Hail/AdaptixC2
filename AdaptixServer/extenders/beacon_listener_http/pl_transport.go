@@ -171,11 +171,17 @@ func (t *TransportHTTP) Start(ts Teamserver) error {
 		c.Next()
 	})
 
-	if t.Config.HttpMethod == "POST" {
-		router.POST("/*endpoint", t.processRequest)
-	} else if t.Config.HttpMethod == "GET" {
-		router.GET("/*endpoint", t.processRequest)
-	}
+	// Register BOTH verbs so beacons can use GET for empty check-ins
+	// (no request body) and POST when they have output to upload. The
+	// beacon's connector picks the verb per request based on whether it
+	// has a body; the configured http_method is kept as the default used
+	// for check-ins (and is still what validConfig insists be present),
+	// but the server does not refuse the other verb. Without the second
+	// registration, a POST-with-body hits router.NoRoute -> pageError
+	// (404) and the beacon's output is silently discarded.
+	router.GET("/*endpoint", t.processRequest)
+	router.POST("/*endpoint", t.processRequest)
+	_ = t.Config.HttpMethod
 
 	t.Active = true
 
@@ -357,6 +363,7 @@ func (t *TransportHTTP) processRequest(ctx *gin.Context) {
 
 	agentType, agentId, beat, bodyData, err = t.parseBeatAndData(ctx)
 	if err != nil {
+		fmt.Printf("[bl-http] parse-err method=%s uri=%s src=%s err=%v\n", ctx.Request.Method, ctx.Request.URL.Path, ExternalIP, err)
 		goto ERR
 	}
 
@@ -372,6 +379,15 @@ func (t *TransportHTTP) processRequest(ctx *gin.Context) {
 	_ = Ts.TsAgentProcessData(agentId, bodyData)
 
 	responseData, err = Ts.TsAgentGetHostedAll(agentId, 0x1900000) // 25 Mb
+
+	// Diagnostic trace, opt-in via BL_HTTP_DEBUG=1 in the server environment.
+	// Off by default so a production listener does not spam stdout with per-
+	// request lines carrying agent_id in cleartext; blue team telemetry
+	// belongs on the proxy, not on the actor-impersonating C2 server.
+	if os.Getenv("BL_HTTP_DEBUG") == "1" {
+		fmt.Printf("[bl-http] agent=%s method=%s uri=%s bodylen=%d resplen=%d\n",
+			agentId, ctx.Request.Method, ctx.Request.URL.Path, len(bodyData), len(responseData))
+	}
 	if err != nil {
 		goto ERR
 	} else {
