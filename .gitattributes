@@ -1,0 +1,25 @@
+# Canonical LF line endings for anything a build will consume.
+# Prevents Windows checkouts from turning Go source, C++, and sum/mod files
+# into CRLF, which otherwise produces spurious whole-file diffs on commit
+# (seen when the Windows-side editor saved pl_transport.go through a path
+# where git did not autocrlf on write — git -c core.autocrlf=false then
+# commits every line as added, 520+ insertions for a 10-line change).
+*.go       text eol=lf
+*.cpp      text eol=lf
+*.h        text eol=lf
+*.hpp      text eol=lf
+*.c        text eol=lf
+*.sum      text eol=lf
+*.mod      text eol=lf
+*.work     text eol=lf
+*.work.sum text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
+*.sh       text eol=lf
+
+# CMake / build / artefact binaries
+*.exe      binary
+*.dll      binary
+*.so       binary
+*.a        binary
+*.o        binary
