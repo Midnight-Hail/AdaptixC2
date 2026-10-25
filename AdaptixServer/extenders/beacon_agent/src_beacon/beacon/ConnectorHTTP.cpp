@@ -471,19 +471,26 @@ void ConnectorHTTP::SendData(BYTE* data, ULONG data_size)
 							}
 							else {
 								// No Content-Length (chunked or
-								// connection-closed framing): read until
-								// WinHttpQueryDataAvailable reports 0 or
-								// the socket closes.
+								// connection-closed framing): read via a
+								// fixed-size buffer. WinHttpReadData blocks
+								// for data, so we iterate until it reports
+								// zero bytes (framing complete / socket
+								// closed). The previous WinHttpQueryDataAvailable
+								// pre-check had the same race as the CL path:
+								// for a small chunked response, avail==0 on
+								// the first query made us break with
+								// recvSize=0 and lose the body.
+								const DWORD kReadChunk = 4096;
 								ULONG numberReadedBytes = 0;
-								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, 0);
+								ULONG capacity = kReadChunk;
+								BYTE* buffer = (BYTE*)this->functions->LocalAlloc(LPTR, capacity);
 								while (1) {
-									DWORD avail = 0;
-									if (!this->functions->WinHttpQueryDataAvailable(hRequest, &avail) || avail == 0) {
-										break;
+									if (numberReadedBytes + kReadChunk > capacity) {
+										capacity = numberReadedBytes + kReadChunk;
+										buffer = (BYTE*)this->functions->LocalReAlloc(buffer, capacity, LMEM_MOVEABLE);
 									}
-									buffer = (BYTE*)this->functions->LocalReAlloc(buffer, numberReadedBytes + avail, LMEM_MOVEABLE);
 									DWORD readedBytes = 0;
-									if (!this->functions->WinHttpReadData(hRequest, buffer + numberReadedBytes, avail, &readedBytes) || readedBytes == 0) {
+									if (!this->functions->WinHttpReadData(hRequest, buffer + numberReadedBytes, kReadChunk, &readedBytes) || readedBytes == 0) {
 										break;
 									}
 									numberReadedBytes += readedBytes;
